@@ -1,10 +1,11 @@
 name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+
 on:
   pull_request:
     types:
       - closed
-     branches:
+    branches:
       - UAT
     paths:
       - '**.sql'
@@ -15,38 +16,38 @@ jobs:
     if: github.base_ref == 'refs/heads/main'
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v2
+      - name: Checkout Code
+        uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
 
-    - name: Install Snowflake Connector
-      run: pip install snowflake-connector-python
+      - name: Install Snowflake Connector
+        run: pip install snowflake-connector-python
 
-    - name: Execute SQL Scripts
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SF_USER }}
-        SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
-      run: |
-        python -c "
-        import os
-        import glob
-        import snowflake.connector
+      - name: Execute SQL Scripts
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SF_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
+        run: |
+          python -c "
+          import os
+          import glob
+          import snowflake.connector
 
-        # Connect to Snowflake
-        conn = snowflake.connector.connect(
-          user=os.getenv('SF_USER'),
-          password=os.getenv('SF_PASSWORD'),
-          account=os.getenv('SF_ACCOUNT')
-        )
+          # Connect to Snowflake
+          conn = snowflake.connector.connect(
+            user=os.getenv('SNOWFLAKE_USER'),
+            password=os.getenv('SNOWFLAKE_PASSWORD'),
+            account=os.getenv('SNOWFLAKE_ACCOUNT')
+          )
 
-        # Execute each SQL script
-        for filename in glob.glob('**/*.sql', recursive=True):
-          with open(filename, 'r') as file:
-            sql = file.read()
-            conn.cursor().execute(sql)
-        "
+          # Execute each SQL script
+          for filename in glob.glob('**/*.sql', recursive=True):
+            with open(filename, 'r') as file:
+              sql = file.read()
+              conn.cursor().execute(sql)
+          "
