@@ -26,7 +26,16 @@ jobs:
       - name: Install Snowflake Connector
         run: pip install snowflake-connector-python
 
-      - name: Execute SQL Scripts
+      - name: Identify Modified SQL Scripts
+        id: get-modified-sql
+        run: |
+          echo "Changed files:"
+          git diff --name-only ${{ github.event.before }} ${{ github.sha }} '*.sql'
+          FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} '*.sql')
+          echo "::set-output name=sql_files::$FILES"
+      
+      - name: Execute Modified SQL Scripts
+        if: steps.get-modified-sql.outputs.sql_files != ''
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SF_USERNAME }}
@@ -34,19 +43,23 @@ jobs:
         run: |
           python -c "
           import os
-          import glob
           import snowflake.connector
+          import subprocess
 
           # Connect to Snowflake
           conn = snowflake.connector.connect(
-            user=os.getenv('SNOWFLAKE_USER'),
-            password=os.getenv('SNOWFLAKE_PASSWORD'),
-            account=os.getenv('SNOWFLAKE_ACCOUNT')
+            user=os.getenv('SF_USER'),
+            password=os.getenv('SF_PASSWORD'),
+            account=os.getenv('SF_ACCOUNT')
           )
 
-          # Execute each SQL script
-          for filename in glob.glob('**/*.sql', recursive=True):
-            with open(filename, 'r') as file:
-              sql = file.read()
-              conn.cursor().execute(sql)
+          # Execute each modified SQL script
+          files = '${{ steps.get-modified-sql.outputs.sql_files }}'.split()
+          for filename in files:
+            if filename.endswith('.sql'):
+              with open(filename, 'r') as file:
+                sql = file.read()
+                print(f'Executing {filename}...')
+                conn.cursor().execute(sql)
           "
+
