@@ -1,4 +1,5 @@
-name: Execute SQL Scripts on Snowflake
+name: GitHub Actions SF
+run-name: ${{ github.actor }} is testing out GitHub Actions
 
 on:
   pull_request:
