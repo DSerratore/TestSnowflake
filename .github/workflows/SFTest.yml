@@ -1,12 +1,6 @@
-name: GitHub Actions SF
-run-name: ${{ github.actor }} is testing out GitHub Actions
-
-on:
-  pull_request:
-    branches:
-      - UAT
-    paths:
-      - '**.sql'
+name: GitHub Actions Demo
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on: [push]
 
 jobs:
   execute-sql:
