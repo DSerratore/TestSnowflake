@@ -3,18 +3,16 @@ run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
 
 on:
   pull_request:
+   branches:
+      - UAT
     types:
       - closed
-    branches:
-      - UAT
-    paths:
-      - '**.sql'
-
+   
+    
 jobs:
-  execute-sql:
+  if_merged:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    if: github.base_ref == 'refs/heads/main'
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
