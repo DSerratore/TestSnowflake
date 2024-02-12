@@ -29,7 +29,7 @@ jobs:
       - name: Execute SQL Scripts
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SF_USER }}
+          SNOWFLAKE_USER: ${{ secrets.SF_USERNAME }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
         run: |
           python -c "
