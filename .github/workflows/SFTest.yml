@@ -8,6 +8,8 @@ on:
       - UAT
     types:
       - closed
+    paths:
+      - '**.sql'
    
     
 jobs:
