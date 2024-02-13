@@ -28,7 +28,7 @@ jobs:
       - name: Identify Modified SQL Scripts
         id: get-modified-sql
         run: |
-              git fetch origin main
+              git fetch origin UAT
               FILES=$(git diff --name-only origin/UAT HEAD -- '*.sql')
               echo "Changed SQL files: $FILES"
               echo "::set-output name=sql_files::$FILES"
