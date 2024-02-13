@@ -8,9 +8,6 @@ on:
       - UAT
     types:
       - closed
-    paths:
-      - '**.sql'
-   
     
 jobs:
   if_merged:
@@ -31,10 +28,10 @@ jobs:
       - name: Identify Modified SQL Scripts
         id: get-modified-sql
         run: |
-          echo "Changed files:"
-          git diff --name-only ${{ github.event.before }} ${{ github.sha }} '*.sql'
+          echo  "::set-output name=files::$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | xargs)"
           FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} '*.sql')
           echo "::set-output name=sql_files::$FILES"
+
       
       - name: Execute Modified SQL Scripts
         if: steps.get-modified-sql.outputs.sql_files != ''
