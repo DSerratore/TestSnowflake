@@ -8,9 +8,6 @@ on:
       - UAT
     types:
       - closed
-    paths:
-      - '**.sql'
-   
     
 jobs:
   if_merged:
@@ -28,14 +25,12 @@ jobs:
       - name: Install Snowflake Connector
         run: pip install snowflake-connector-python
 
-      - name: Get Changed Files
-  id: file_changes
-  run: |
-    echo "Changed files in PR:"
-    git fetch origin ${{ github.base_ref }}
-    CHANGED_FILES=$(git diff --name-only FETCH_HEAD...HEAD '*.sql')
-    echo $CHANGED_FILES
-    echo "::set-output name=files::$CHANGED_FILES"
+      - name: Identify Modified SQL Scripts
+        id: get-modified-sql
+        run: |
+          echo  "::set-output name=files::$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | xargs)"
+          FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} '*.sql')
+          echo "::set-output name=sql_files::$FILES"
 
       
       - name: Execute Modified SQL Scripts
