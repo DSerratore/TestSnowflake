@@ -28,9 +28,10 @@ jobs:
       - name: Identify Modified SQL Scripts
         id: get-modified-sql
         run: |
-          echo  "::set-output name=files::$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }} | xargs)"
-          FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} '*.sql')
-          echo "::set-output name=sql_files::$FILES"
+              git fetch origin ${{ github.base_ref }}
+              FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD -- '*.sql')
+              echo "Changed SQL files: $FILES"
+              echo "::set-output name=sql_files::$FILES"
 
       
       - name: Execute Modified SQL Scripts
