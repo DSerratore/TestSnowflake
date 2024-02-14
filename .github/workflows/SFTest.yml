@@ -33,7 +33,7 @@ jobs:
               git fetch origin UAT
               git checkout UAT
               git log -1
-              FILES=$(git diff --name-only HEAD~1 HEAD -- '*.sql')
+              FILES=$(git diff --name-only HEAD~1 HEAD -- '*.sql' | tr '\n' ',')
               echo "Changed SQL files: $FILES"
               echo "::set-output name=sql_files::$FILES"
 
@@ -58,7 +58,7 @@ jobs:
           )
 
           # Execute each modified SQL script
-          files = '${{ steps.get-modified-sql.outputs.sql_files }}'.split('\n')
+          files = '${{ steps.get-modified-sql.outputs.sql_files }}'.strip().split(',')
           for filename in files:
             print(filename)
             if filename.endswith('.sql'):
