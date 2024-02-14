@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
+        with: 
+              fetch-depth: 0 
 
       - name: Set up Python
         uses: actions/setup-python@v2
@@ -28,9 +30,8 @@ jobs:
       - name: Identify Modified SQL Scripts
         id: get-modified-sql
         run: |
-              git fetch origin main:main-branch
-              git fetch origin UAT:UAT-branch
-              FILES=$(git diff --name-only main-branch uat-branch -- '*.sql')
+              git fetch origin UAT
+              FILES=$(git diff --name-only origin/UAT HEAD -- '*.sql')
               echo "Changed SQL files: $FILES"
               echo "::set-output name=sql_files::$FILES"
 
