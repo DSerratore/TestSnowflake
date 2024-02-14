@@ -59,6 +59,7 @@ jobs:
 
           # Execute each modified SQL script
           files = '${{ steps.get-modified-sql.outputs.sql_files }}'.split()
+          print(f"Files to be processed: {files}")
           for filename in files:
             if filename.endswith('.sql'):
               with open(filename, 'r') as file:
