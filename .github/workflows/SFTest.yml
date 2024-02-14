@@ -28,8 +28,8 @@ jobs:
       - name: Identify Modified SQL Scripts
         id: get-modified-sql
         run: |
-              git fetch origin Main:main-branch
-              git fetch origin UAT:uat-branch
+              git fetch origin main:main-branch
+              git fetch origin UAT:UAT-branch
               FILES=$(git diff --name-only main-branch uat-branch -- '*.sql')
               echo "Changed SQL files: $FILES"
               echo "::set-output name=sql_files::$FILES"
