@@ -52,9 +52,9 @@ jobs:
 
           # Connect to Snowflake
           conn = snowflake.connector.connect(
-            user=os.getenv('SF_USER'),
-            password=os.getenv('SF_PASSWORD'),
-            account=os.getenv('SF_ACCOUNT')
+            user=os.getenv('SNOWFLAKE_USER'),
+            password=os.getenv('SNOWFLAKE_PASSWORD'),
+            account=os.getenv('SNOWFLAKE_ACCOUNT')
           )
 
           # Execute each modified SQL script
