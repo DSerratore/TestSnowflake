@@ -31,7 +31,9 @@ jobs:
         id: get-modified-sql
         run: |
               git fetch origin UAT
-              FILES=$(git diff --name-only origin/UAT HEAD -- '*.sql')
+              git checkout UAT
+              git log -1
+              FILES=$(git diff --name-only HEAD~1 HEAD -- '*.sql')
               echo "Changed SQL files: $FILES"
               echo "::set-output name=sql_files::$FILES"
 
