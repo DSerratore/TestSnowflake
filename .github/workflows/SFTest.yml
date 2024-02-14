@@ -36,7 +36,6 @@ jobs:
               FILES=$(git diff --name-only HEAD~1 HEAD -- '*.sql')
               echo "Changed SQL files: $FILES"
               echo "::set-output name=sql_files::$FILES"
-              echo "::set-output name=sql_files::$(cat modified_sql_files.txt)"
 
       
       - name: Execute Modified SQL Scripts
@@ -59,27 +58,13 @@ jobs:
           )
 
           # Execute each modified SQL script
-          # files = '${{ steps.get-modified-sql.outputs.sql_files }}'.strip().split('\\n')
-          #print(files)
-          # for filename in files:
-          #  if filename.endswith('.sql'):
-          #    with open(filename, 'r') as file:
-          #      sql = file.read()
-          #      print(f'Executing {filename}...')
-          #      conn.cursor().execute(sql)
-
-          with open('modified_sql_files.txt', 'r') as file:
-            files = file.readlines()
-            files = [line.strip() for line in files]
-            print('Executing SQL files:', files)
-            for filename in files:
-              if filename.endswith('.sql'):
-                try:
-                  with open(filename, 'r') as sql_file:
-                    sql = sql_file.read()
-                    print(f'Executing {filename}...')
-                    conn.cursor().execute(sql)
-                except Exception as e:
-                  print(f'Error executing {filename}: {e}')
+          files = '${{ steps.get-modified-sql.outputs.sql_files }}'.split('\n')
+          for filename in files:
+            print(filename)
+            if filename.endswith('.sql'):
+              with open(filename, 'r') as file:
+                sql = file.read()
+                print(f'Executing {filename}...')
+                conn.cursor().execute(sql)
           "
 
