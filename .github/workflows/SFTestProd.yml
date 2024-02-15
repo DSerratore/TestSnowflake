@@ -1,0 +1,69 @@
+name: GitHub Actions Demo
+run-name: ${{ github.actor }} is testing out GitHub Actions in Prod 🚀
+
+
+on:
+  pull_request:
+    branches:
+      - PROD
+    types:
+      - closed
+    
+jobs:
+  if_merged:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+        with: 
+              fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Install Snowflake Connector
+        run: pip install snowflake-connector-python
+
+      - name: Identify Modified SQL Scripts
+        id: get-modified-sql
+        run: |
+              git fetch origin PROD
+              git checkout PROD
+              git log -1
+              FILES=$(git diff --name-only HEAD~1 HEAD -- '*.sql' | tr '\n' ',')
+              echo "Changed SQL files: $FILES"
+              echo "::set-output name=sql_files::$FILES"
+
+      
+      - name: Execute Modified SQL Scripts
+        if: steps.get-modified-sql.outputs.sql_files != ''
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SF_USERNAME }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SF_PASSWORD }}
+        run: |
+          python -c "
+          import os
+          import snowflake.connector
+          import subprocess
+
+          # Connect to Snowflake
+          conn = snowflake.connector.connect(
+            user=os.getenv('SNOWFLAKE_USER'),
+            password=os.getenv('SNOWFLAKE_PASSWORD'),
+            account=os.getenv('SNOWFLAKE_ACCOUNT')
+          )
+
+          # Execute each modified SQL script
+          files = '${{ steps.get-modified-sql.outputs.sql_files }}'.strip().split(',')
+          for filename in files:
+            print(filename)
+            if filename.endswith('.sql'):
+              with open(filename, 'r') as file:
+                sql = file.read()
+                print(f'Executing {filename}...')
+                conn.cursor().execute(sql)
+          "
