@@ -1,0 +1,311 @@
+name: DEV -> UAT Deployment Test
+run-name: Deployment Test
+
+on:
+  workflow_dispatch:
+  # pull_request:
+  #  branches:
+  #     - UAT
+  #  types:
+  #     - closed
+jobs:
+  if_merged:
+    # if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+        with: 
+          fetch-depth: 20
+ 
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      # - uses: actions/checkout@v2 # Remove later
+ 
+      - name: Install Snowflake Connector
+        run: pip install snowflake-connector-python
+ 
+      - name: Identify Modified SQL Scripts
+        id: get-modified-sql
+        run: |
+              git fetch origin develop
+              git checkout develop
+              git log -1
+              FILES=$(git diff --name-only HEAD~1 HEAD -- '*.sql' | tr '\n' ',')
+              echo "Changed SQL files: $FILES"
+              echo "::set-output name=sql_files::$FILES"
+ 
+      
+      - name: Execute Modified SQL Scripts
+        if: steps.get-modified-sql.outputs.sql_files != ''
+        env:
+           DEV_ACCOUNT: ${{ secrets.SF__ACCOUNT }}
+        run: |
+          python -c "
+          print("Test")
+          import os
+          import pprint
+          import snowflake.connector
+          from collections import OrderedDict
+          
+          #   +----------------------------------------------------------------+
+          #   |                              Setup                             |
+          #   +----------------------------------------------------------------+
+          
+          # Set Connection Paramters
+          dev_account = os.environ['DEV_ACCOUNT']
+          dev_warehouse = os.environ['DEV_WAREHOUSE']
+          dev_user = os.environ['DEV_USER']
+          dev_password = os.environ['DEV_PASSWORD']
+          dev_deploymentadmin = os.environ['DEV_DEPLOYMENTADMIN']
+          dev_roleadmin = os.environ['DEV_ROLEADMIN']
+          dev_accountadmin = os.environ['DEV_ACCOUNTADMIN']
+          
+          #uat_account = os.getenv("SF_UAT_ACCOUNT"),
+          #uat_warehouse = os.getenv("SF_UAT_WAREHOUSE"),
+          #uat_user = os.getenv("SF_UAT_USER"),
+          #uat_password = os.getenv("SF_UAT_PASSWORD"),
+          #uat_deploymentadmin = os.getenv("SF_UAT_DEPLOYMENTADMIN"),
+          #uat_roleadmin = os.getenv("SF_UAT_ROLEADMIN"),
+          #uat_accountadmin = os.getenv("SF_UAT_ACCOUNTADMIN")
+          
+          # Files as returned by the Github Action
+          files = '${{ steps.get-modified-sql.outputs.sql_files }}'.strip().split(',')
+          
+          # Required as the Github Action returns an empty value at the end of the list.
+          # Reason: the "Changed SQL Files part" appends a "," after each script name, which
+          # Python interprets as another list entry --> fix either here or in the Github Action
+          files.remove("")
+          
+          
+          #   +----------------------------------------------------------------+
+          #   |                SQL Statements for Task Graph                   |
+          #   +----------------------------------------------------------------+
+          
+          #root_task_creation_statement_dev = "SELECT 'CREATE OR REPLACE TASK '||FULL_TASK_NAME||CHR(10)|| 'WAREHOUSE = '||WAREHOUSE||CHR(10)|| CASE WHEN SCHEDULE IS NOT NULL THEN 'SCHEDULE = '''||SCHEDULE||'''' ELSE 'AFTER TRN__CONTROLLING_PROFITABILITY.PROFITABILITY.ROOT_TSK' END ||CHR(10)|| 'AS '||DEFINITION||';' AS CREATE_DDL FROM (SELECT tsk.NAME TSK_NAME, DATABASE_NAME||'.'||SCHEMA_NAME||'.'||tsk.NAME FULL_TASK_NAME, SCHEDULE, AREHOUSE, ARRAY_TO_STRING(PARSE_JSON(PREDECESSORS::STRING), ',') PREDECESSORS, DEFINITION FROM table(information_schema.task_dependents(task_name => 'ROOT_TSK', recursive => TRUE)) tsk ) WHERE TSK_NAME = 'ROOT_TSK';"          
+          #finalize_task_creation_statement_dev = "SELECT 'CREATE OR REPLACE TASK '||FULL_TASK_NAME||CHR(10)|| 'WAREHOUSE = '||WAREHOUSE||CHR(10)|| 'FINALIZE = TRN__CONTROLLING_PROFITABILITY.PROFITABILITY.ROOT_TSK'||CHR(10)|| 'AS '||DEFINITION||';' AS CREATE_DDL FROM (SELECT tsk.NAME TSK_NAME, DATABASE_NAME||'.'||SCHEMA_NAME||'.'||tsk.NAME FULL_TASK_NAME, SCHEDULE, WAREHOUSE, ARRAY_TO_STRING(PARSE_JSON(PREDECESSORS::STRING), ',') PREDECESSORS, DEFINITION FROM table(information_schema.task_dependents(task_name => 'FINALIZE_TSK', recursive => TRUE)) tsk );"
+          #task_graph_creation_statement_dev = "SELECT CREATE OR REPLACE TASK '||FULL_TASK_NAME||CHR(10)|| 'WAREHOUSE = '||WAREHOUSE||CHR(10)|| CASE WHEN SCHEDULE IS NOT NULL THEN 'SCHEDULE = '''||SCHEDULE||'''' ELSE 'AFTER TRN__CONTROLLING_PROFITABILITY.PROFITABILITY.ROOT_TSK' END ||CHR(10)|| 'AS '||DEFINITION||';' AS CREATE_DDL, 'ALTER TASK '||FULL_TASK_NAME||' REMOVE AFTER TRN__CONTROLLING_PROFITABILITY.PROFITABILITY.ROOT_TSK;' AS ALTER_DDL_1, 'ALTER TASK '||FULL_TASK_NAME||' ADD AFTER ' || PREDECESSORS || ';' AS ALTER_DDL_2 FROM ( SELECT tsk.NAME TSK_NAME, DATABASE_NAME||'.'||SCHEMA_NAME||'.'||tsk.NAME FULL_TASK_NAME, SCHEDULE, WAREHOUSE, ARRAY_TO_STRING(PARSE_JSON(PREDECESSORS::STRING), ',') PREDECESSORS, DEFINITION FROM table(information_schema.task_dependents(task_name => 'ROOT_TSK', recursive => TRUE)) tsk ) WHERE TSK_NAME <> 'ROOT_TSK';"          
+          #task_resume_statement = "SELECT SYSTEM$TASK_DEPENDENTS_ENABLE('TRN__CONTROLLING_PROFITABILITY.PROFITABILITY.ROOT_TSK');"
+          
+          
+          #   +----------------------------------------------------------------+
+          #   |            Obtain databases & script execution order           |
+          #   +----------------------------------------------------------------+
+          
+          def create_db_dict(github_action_files_input):
+              """Return a dictionary that contains all databases with all corresponding scripts, 
+              sorted by type (e.g., views, tables) and the correct script execution order."""
+              # Create dict with the first 2 DBs to execute set already
+              db_dict = OrderedDict()
+              db_dict["log__controlling_profitability"] = OrderedDict()
+              db_dict["sec__controlling_profitability"] = OrderedDict()
+          
+              # Iterate through all filenames to dynamically create the keys for all other DBs
+              # as required and add them to the dict. Omit the migration DB
+              for filename in github_action_files_input:
+                  db_name = list(filename.split("/"))[0]
+                  
+                  # Dynamically create the keys for all other DBs as needed and add to the dict
+                  if db_name != "trn__dep_migration":
+                      if db_name not in db_dict.keys():
+                          db_dict[db_name] = OrderedDict()
+                  else:
+                      pass
+              
+              # Create the subkeys for the 2nd level dicts
+              # Iterate through all key-value pairs. Values are currently empty
+              for key, value in db_dict.items():
+                  value["database"] = []
+                  value["schema"] = []
+                  value["views"] = []
+                  value["tables"] = []
+                  value["functions"] = []
+                  value["procedures"] = []
+          
+              # Fill the sub-dicts w/ the corresponding filenames
+              for filename in github_action_files_input:
+                  filename_split = list(filename.split("/"))
+          
+                  if len(filename_split) == 2:
+                      db_dict[filename_split[0]]["database"].append(filename)
+                  elif len(filename_split) == 3:
+                      db_dict[filename_split[0]]["schema"].append(filename)
+                  else:
+                      if filename_split[2] != "tasks":
+                          db_dict[filename_split[0]][filename_split[2]].append(filename)
+                      else:
+                          pass
+              
+              return db_dict
+          
+          # The filenames are retrieved from the Github Repo, therefore no connection is required here.
+          # Execute function and save the dict with the files to execute in variable scripts_to_execute:
+          scripts_to_execute = create_db_dict(files)
+          
+          pprint.pp(scripts_to_execute)
+          
+          
+          #   +----------------------------------------------------------------+
+          #   |                     Execute SQL Scripts                        |
+          #   +----------------------------------------------------------------+
+          
+          def execute_sql_scripts(execution_dict):
+              for database, folder_name in execution_dict.items():
+                  for folder, filename_list in folder_name.items():
+                      # print(f"folder: {folder}")
+                      # print(f"filename_list: {filename_list}")
+                      if len(filename_list) > 0:
+                          for filename in filename_list:
+                              if filename.endswith(".sql"):
+          
+                                  # Assign correct roles to the file for execution
+                                  if (("roles_provision" in filename) or ("roles_assign" in filename)):
+                                      print("ROLEADMIN")
+          
+                                      with open(filename, "r") as file:
+                                          sql = file.read()
+                                          print(f"Executing {filename}.")
+                                          print(sql[:50])
+          
+                                          #with snowflake.connector.connect(
+                                          #    account = uat_account,
+                                          #    user = uat_user,
+                                          #    password = uat_password,
+                                          #    role = uat_roleadmin,
+                                          #    warehouse = uat_warehouse
+                                          #) as conn:
+                                          #    conn.cursor().execute(sql)
+          
+                                  elif "user_control_prc" in filename:
+                                      print("ACCOUNTADMIN")
+          
+                                      with open(filename, "r") as file:
+                                          sql = file.read()
+                                          print(f"Executing {filename}.")
+                                          print(sql[:50])
+          
+                                          #with snowflake.connector.connect(
+                                          #    account = uat_account,
+                                          #    user = uat_user,
+                                          #    password = uat_password,
+                                          #    role = uat_accountadmin,
+                                          #    warehouse = uat_warehouse
+                                          #) as conn:
+                                          #    conn.cursor().execute(sql)
+          
+                                  else:
+                                      print("DEPLOYMENTADMIN")
+                                      with open(filename, "r") as file:
+                                          sql = file.read()
+                                          print(f"Executing {filename}.")
+                                          print(sql[:50])
+          
+                                          #with snowflake.connector.connect(
+                                          #    account = uat_account,
+                                          #    user = uat_user,
+                                          #    password = uat_password,
+                                          #    role = uat_deploymentadmin,
+                                          #    warehouse = uat_warehouse
+                                          #) as conn:
+                                          #    conn.cursor().execute(sql)
+          
+                                  print("\n")
+          
+                              else:
+                                  pass
+                      else:
+                          pass
+          
+          # Run the function to execute the scripts
+          execute_sql_scripts(scripts_to_execute)
+          
+          
+          #   +----------------------------------------------------------------+
+          #   |                      Create Task Graph                         |
+          #   +----------------------------------------------------------------+
+          
+          # Execute the root task creation statement in DEV
+          with snowflake.connector.connect(
+              account = dev_account,
+              user = dev_user,
+              password = dev_password,
+              role = dev_deploymentadmin,
+              warehouse = dev_warehouse
+          ) as conn:
+              root_task_creation_statement_uat = conn.cursor().execute(root_task_creation_statement_dev).fetchone()
+              # Root task creation statement is returned
+              print(root_task_creation_statement_uat)
+          
+          ## Execute the root task creation statement returned from DEV in UAT
+          #with snowflake.connector.connect(
+          #    account = uat_account,
+          #    user = uat_user,
+          #    password = uat_password,
+          #    role = "",
+          #    warehouse = uat_warehouse
+          #) as conn:
+          #    conn.cursor().execute(root_task_creation_statement_uat)
+          
+          
+          # Execute the finalize task creation SQL statemtnt in DEV
+          with snowflake.connector.connect(
+              account = dev_account,
+              user = dev_user,
+              password = dev_password,
+              role = dev_deploymentadmin,
+              warehouse = dev_warehouse
+          ) as conn:
+              finalize_task_creation_statement_uat = conn.cursor().execute(finalize_task_creation_statement_dev).fetchone()
+              # Finalize task creation statement is returned
+              print(finalize_task_creation_statement_uat)
+          
+          ## Execute the finalize task creation SQL statemtnt in UAT
+          #with snowflake.connector.connect(
+          #    account = uat_account,
+          #    user = uat_user,
+          #    password = uat_password,
+          #    role = "",
+          #    warehouse = uat_warehouse
+          #) as conn:
+          #    conn.cursor().execute(finalize_task_creation_statement_uat) 
+              
+          
+          # Create the rest of the task graph
+          # Execute the task graph command table creation statement in DEV and write it into a df
+          with snowflake.connector.connect(
+              account = dev_account,
+              user = dev_user,
+              password = dev_password,
+              role = dev_deploymentadmin,
+              warehouse = dev_warehouse
+          ) as conn:
+              task_graph_creation_df = conn.cursor().execute(task_graph_creation_statement_dev).fetch_pandas_all()
+              # print(task_graph_creation_df)
+          
+          # Obtain each column from the df and execute all statements column after column in UAT
+          #with snowflake.connector.connect(
+          #    account = uat_account,
+          #    user = uat_user,
+          #    password = uat_password,
+          #    role = "",
+          #    warehouse = uat_warehouse
+          #) as conn:
+              # Obtain the column names to use them as the basis for the command execution order
+              task_graph_creation_df_colnames = list(task_graph_creation_df.columns)
+              # print(task_graph_creation_df_colnames)
+          
+              # Fetch statement by statement, column by column and execute it
+              for column in task_graph_creation_df_colnames:
+                  # print(column)
+                  task_creation_sql_statements = task_graph_creation_df_colnames[column].tolist()
+                  for statement in task_creation_sql_statements:
+                      print(statement)
+                      # conn.cursor().execute(statement)
+                      # break
+              
+              # Execute the task resume statement
+              conn.cursor().execute(task_resume_statement)
+          "
